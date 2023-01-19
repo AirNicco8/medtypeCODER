@@ -2,7 +2,8 @@ from helper import *
 from models import BertPlain, BertCombined
 from dataloader import MedTypeDataset
 
-from torch.utils.data import DataLoader
+import numpy as np
+from torch.utils.data import DataLoader, Subset
 from transformers.optimization import AdamW
 from transformers import get_linear_schedule_with_warmup, BertTokenizer
 from sklearn.metrics import average_precision_score
@@ -54,9 +55,15 @@ class MedType(object):
 		else:
 			data = load_pickle('{}/{}.pkl'.format(self.p.data_dir, self.p.data))
 
+			id_list = [] # (!!!) added this part to use only the json considered by linker dump
+			for line in open('../datasets/{}.json'.format('medmentions')):
+				doc = json.loads(line.strip())		
+				if doc['split'] == 'test': id_list.append(doc['_id'])
+
 			for doc in data:
-				doc['label'] = list(set([self.type2id[type_remap[x]] for x in doc['label']]))
-				self.data[doc.get('split', 'train')].append(doc)
+				if doc['_id'] in id_list:
+					doc['label'] = list(set([self.type2id[type_remap[x]] for x in doc['label']]))
+					self.data[doc.get('split', 'train')].append(doc)
 
 		self.logger.info('\nDataset size -- Train: {}, Valid: {}, Test:{}'.format(len(self.data['train']), len(self.data['valid']), len(self.data['test'])))
 
@@ -66,7 +73,7 @@ class MedType(object):
 		def get_data_loader(split, shuffle=True):
 			dataset	= MedTypeDataset(self.data[split], self.num_class, self.tokenizer, self.p)
 			return DataLoader(
-					dataset,
+					dataset, #Subset(dataset, np.arange(20)), # (!!!) only 20 samples of dataset used 
 					batch_size      = self.p.batch_size * self.p.batch_factor,
 					shuffle         = shuffle,
 					num_workers     = self.p.num_workers,
@@ -74,8 +81,8 @@ class MedType(object):
 				)
 
 		self.data_iter = {
-			'train'	: get_data_loader('train'),
-			'valid'	: get_data_loader('valid', shuffle=False),
+			'train'	: 0, #(!!!) get_data_loader('train'),
+			'valid'	: 0, # (!!!) get_data_loader('valid', shuffle=False),
 			'test'	: get_data_loader('test',  shuffle=False),
 		}
 
@@ -179,7 +186,7 @@ class MedType(object):
 		Returns
 		-------
 		"""
-		state = torch.load('{}/{}'.format(load_path, self.p.name))
+		state = torch.load('{}/{}'.format(load_path, self.p.name), map_location=torch.device('cpu'))
 		self.best_val		= 0.0
 		self.best_test		= 0.0
 		self.best_epoch		= 0
@@ -202,8 +209,11 @@ class MedType(object):
 				if 'module' in k:
 					k = k.replace('module.', '')
 
-				new_state_dict[k] = v
-
+				if k != 'bert.embeddings.position_ids': # (!!!) this key is not present in PlainBert class state dict
+					new_state_dict[k] = v
+			
+			topp = set(new_state_dict.keys())-set(self.model.state_dict().keys())
+			print(topp)
 			self.model.load_state_dict(new_state_dict)
 
 		if self.p.restore_opt:
@@ -283,7 +293,7 @@ class MedType(object):
 
 		with torch.no_grad():
 			for batches in self.data_iter[split]:
-				for k, batch in enumerate(batches):
+				for k, batch in enumerate(batches[:10]): # (!!!) only 10 batches evaluated
 					eval_loss, logits = self.execute(batch)
 
 					if (k+1) % self.p.log_freq == 0:
@@ -378,7 +388,7 @@ class MedType(object):
 			if self.p.dump_only:
 				all_logits, all_labels, all_rest = [], [], []
 
-				for split in ['test', 'valid']:
+				for split in ['test']: # (!!!) , 'valid'
 					loss, acc, logits, labels, rest = self.predict(0, split, return_extra=True)
 					print('Score: Loss: {}, Acc:{}'.format(loss, acc))
 

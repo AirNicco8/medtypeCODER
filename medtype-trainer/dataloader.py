@@ -1,6 +1,6 @@
 from helper import *
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 from transformers import BertTokenizer
 
 class MedTypeDataset(Dataset):
