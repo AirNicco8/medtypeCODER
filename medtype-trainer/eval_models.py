@@ -13,9 +13,9 @@ def filter_on_cat(cands, act_cat):
 	return None, idx, None
 
 def get_pred(model_res, _id):
-	# print(_id)
-	# print(model_res.keys())
-	# print(_id in model_res)
+	print(_id)
+	print(model_res.keys())
+	print(_id in model_res)
 	if _id in model_res: 		return model_res[_id]
 	elif (args.data+'_'+_id) in model_res: 	return model_res[args.data+'_'+_id]
 	elif _id.split('_')[1] in model_res: 	return model_res[_id.split('_')[1]]

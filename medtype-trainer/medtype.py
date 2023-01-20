@@ -1,5 +1,5 @@
 from helper import *
-from models import BertPlain, BertCombined
+from models import BertPlain, BertCombined, BertCoder, OgCoder
 from dataloader import MedTypeDataset
 
 import numpy as np
@@ -67,13 +67,15 @@ class MedType(object):
 
 		self.logger.info('\nDataset size -- Train: {}, Valid: {}, Test:{}'.format(len(self.data['train']), len(self.data['valid']), len(self.data['test'])))
 
-		self.tokenizer 	= BertTokenizer.from_pretrained(self.p.bert_model)
+		if self.p.model ==  'bert_coder': self.tokenizer 	=  BertTokenizer.from_pretrained(self.p.model_dir+'tokenizer.json') # (!!!) BertTokenizer.from_pretrained(self.p.bert_model) 
+		if self.p.model ==  'og_coder': self.tokenizer 	=  BertTokenizer.from_pretrained("GanjinZero/coder_all") 
+
 		self.tokenizer.add_tokens(['[MENTION]', '[/MENTION]'])
 
 		def get_data_loader(split, shuffle=True):
 			dataset	= MedTypeDataset(self.data[split], self.num_class, self.tokenizer, self.p)
 			return DataLoader(
-					dataset, #Subset(dataset, np.arange(20)), # (!!!) only 20 samples of dataset used 
+					dataset,
 					batch_size      = self.p.batch_size * self.p.batch_factor,
 					shuffle         = shuffle,
 					num_workers     = self.p.num_workers,
@@ -99,6 +101,8 @@ class MedType(object):
 		"""
 		if 	self.p.model == 'bert_plain': 		model = BertPlain(self.p, len(self.tokenizer), self.num_class)
 		elif 	self.p.model == 'bert_combined': 	model = BertCombined(self.p, len(self.tokenizer), self.num_class)
+		elif 	self.p.model == 'bert_coder': 	model = BertCoder(self.p, len(self.tokenizer), self.num_class)
+		elif 	self.p.model == 'og_coder': 	model = OgCoder(self.p, len(self.tokenizer), self.num_class)
 		else:	raise NotImplementedError
 
 		model = model.to(self.device)
@@ -186,7 +190,8 @@ class MedType(object):
 		Returns
 		-------
 		"""
-		state = torch.load('{}/{}'.format(load_path, self.p.name), map_location=torch.device('cpu'))
+		state = torch.load('{}/{}'.format(load_path, self.p.name))
+		class_weights = torch.load('{}/{}'.format('models/classifier/', 'classifier_weights'))
 		self.best_val		= 0.0
 		self.best_test		= 0.0
 		self.best_epoch		= 0
@@ -202,18 +207,21 @@ class MedType(object):
 
 			self.model.load_state_dict(new_state_dict)
 		else:
-			state_dict 	= state['state_dict']
+			state_dict = state			#state_dict 	= state['state_dict'] (!!!)
 			new_state_dict  = OrderedDict()
 
 			for k, v in state_dict.items():
 				if 'module' in k:
 					k = k.replace('module.', '')
 
+				k = 'bert.'+k # (!!!) added
+
 				if k != 'bert.embeddings.position_ids': # (!!!) this key is not present in PlainBert class state dict
 					new_state_dict[k] = v
+
+			for k, v in class_weights.items(): # (!!!) classifier weights coming from general model pretrained
+				new_state_dict[k] = v
 			
-			topp = set(new_state_dict.keys())-set(self.model.state_dict().keys())
-			print(topp)
 			self.model.load_state_dict(new_state_dict)
 
 		if self.p.restore_opt:
@@ -221,6 +229,18 @@ class MedType(object):
 			self.best_test	= state['best_test']
 			self.best_val	= state['best_val']
 			self.best_epoch	= state['best_epoch']
+		
+	def load_classifier(self):
+		"""
+		Function to load a saved classifier layers
+		
+		Returns
+		-------
+		"""
+		class_weights = torch.load('{}/{}'.format('models/classifier/', 'classifier_weights'))
+
+		for k, v in class_weights.items(): # (!!!) classifier weights coming from general model pretrained
+			self.model.state_dict()[k] = v
 
 	def save_model(self, save_path):
 		"""
@@ -381,9 +401,13 @@ class MedType(object):
 		"""
 
 		self.best_val, self.best_test, self.best_epoch = 0.0, 0.0, 0
+		new_models = ['bert_coder', 'og_coder']
 
 		if self.p.restore:
-			self.load_model(self.p.model_dir)
+			if not (self.p.model in new_models):
+				self.load_model(self.p.model_dir)
+			else:
+				self.load_classifier()
 
 			if self.p.dump_only:
 				all_logits, all_labels, all_rest = [], [], []

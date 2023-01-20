@@ -2,6 +2,7 @@ from helper import *
 
 from torch.nn import functional as F
 from transformers import BertModel
+from sentence_transformers import SentenceTransformer, models, readers
 
 class BertPlain(nn.Module):
 	"""
@@ -20,7 +21,7 @@ class BertPlain(nn.Module):
 		super().__init__()
 		
 		self.p 		= params
-		self.bert 	= BertModel.from_pretrained(self.p.bert_model)
+		self.bert 	= BertModel.from_pretrained(self.p.bert_model, config=self.p.model_dir+'config.json') # (!!!) added config
 		self.bert.resize_token_embeddings(num_tokens)
 		self.dropout	= nn.Dropout(self.p.drop)
 		self.classifier	= nn.Linear(self.bert.config.hidden_size, num_labels)
@@ -43,6 +44,89 @@ class BertPlain(nn.Module):
 
 		loss = F.binary_cross_entropy_with_logits(logits, labels.float())
 		return loss, logits
+
+		
+
+class BertCoder(nn.Module): # (!!!) new class for CODER
+	"""
+	Coder Bert-based Architecture. 
+	----------
+	params:        	Hyperparameters of the model
+	num_tokens:   	Number of tokens in BERT model
+	num_labels:	Total number of classes
+	
+	Returns
+	-------
+	The MedType model instance
+		
+	"""
+	def __init__(self, params, num_tokens, num_labels):
+		super().__init__()
+		
+		self.p 		= params
+		self.bert 	= SentenceTransformer(self.p.model_dir)[0]
+		#self.bert.resize_token_embeddings(num_tokens)
+		self.dropout	= nn.Dropout(self.p.drop)
+		self.classifier	= nn.Linear(768, num_labels)
+	
+	def forward(self, input_ids, attention_mask, mention_pos_idx, labels=None):
+		indict={'input_ids': input_ids, 'attention_mask': attention_mask}
+		outputs = self.bert(indict)
+
+		tok_embed	= outputs[0]
+		bsz, mtok, dim  = tok_embed.shape
+		tok_embed_flat	= tok_embed.reshape(-1, dim)
+		men_idx 	= torch.arange(bsz).to(tok_embed.device) * mtok + mention_pos_idx
+		men_embed 	= tok_embed_flat[men_idx]
+
+		pooled_output	= self.dropout(men_embed)
+		logits		= self.classifier(pooled_output)
+		loss 		= F.binary_cross_entropy_with_logits(logits, labels.float())
+
+		loss = F.binary_cross_entropy_with_logits(logits, labels.float())
+		return loss, logits
+
+
+class OgCoder(nn.Module): # (!!!) new class for CODER
+	"""
+	Coder Bert-based Architecture. 
+	----------
+	params:        	Hyperparameters of the model
+	num_tokens:   	Number of tokens in BERT model
+	num_labels:	Total number of classes
+	
+	Returns
+	-------
+	The MedType model instance
+		
+	"""
+	def __init__(self, params, num_tokens, num_labels):
+		super().__init__()
+		
+		self.p 		= params
+		self.bert 	= BertModel.from_pretrained("GanjinZero/coder_all")
+		self.bert.resize_token_embeddings(num_tokens)
+		self.dropout	= nn.Dropout(self.p.drop)
+		self.classifier	= nn.Linear(768, num_labels)
+	
+	def forward(self, input_ids, attention_mask, mention_pos_idx, labels=None):
+		indict={'input_ids': input_ids, 'attention_mask': attention_mask}
+
+		outputs = self.bert(input_ids, attention_mask) #self.bert(indict)
+
+		tok_embed	= outputs[0]
+		bsz, mtok, dim  = tok_embed.shape
+		tok_embed_flat	= tok_embed.reshape(-1, dim)
+		men_idx 	= torch.arange(bsz).to(tok_embed.device) * mtok + mention_pos_idx
+		men_embed 	= tok_embed_flat[men_idx]
+
+		pooled_output	= self.dropout(men_embed)
+		logits		= self.classifier(pooled_output)
+		loss 		= F.binary_cross_entropy_with_logits(logits, labels.float())
+
+		loss = F.binary_cross_entropy_with_logits(logits, labels.float())
+		return loss, logits
+
 
 class BertCombined(nn.Module):
 	"""
