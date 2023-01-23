@@ -53,7 +53,7 @@ class MedType(object):
 					del doc['prev_toks'], doc['after_toks']
 					self.data[doc['split']].append(doc)
 
-		else:
+		else: # HERE
 			data = load_pickle('{}/{}.pkl'.format(self.p.data_dir, self.p.data))
 
 			id_list = [] # (!!!) added this part to use only the json considered by linker dump
@@ -422,6 +422,7 @@ class MedType(object):
 					all_rest	+= rest
 
 				dump_dir = './predictions/{}'.format(self.p.data); make_dir(dump_dir)
+
 				dump_pickle({
 					'logits': all_logits,
 					'labels': all_labels,
