@@ -3,6 +3,7 @@ from models import BertPlain, BertCombined, BertCoder, OgCoder
 from dataloader import MedTypeDataset
 
 import numpy as np
+from tqdm import tqdm
 from torch.utils.data import DataLoader, Subset
 from transformers.optimization import AdamW
 from transformers import get_linear_schedule_with_warmup, BertTokenizer
@@ -313,7 +314,7 @@ class MedType(object):
 
 		with torch.no_grad():
 			for batches in self.data_iter[split]:
-				for k, batch in enumerate(batches[:10]): # (!!!) only 10 batches evaluated
+				for k, batch in enumerate(batches):
 					eval_loss, logits = self.execute(batch)
 
 					if (k+1) % self.p.log_freq == 0:
@@ -401,10 +402,10 @@ class MedType(object):
 		"""
 
 		self.best_val, self.best_test, self.best_epoch = 0.0, 0.0, 0
-		new_models = ['bert_coder', 'og_coder']
+		nodict_models = ['og_coder', 'bert_coder']
 
 		if self.p.restore:
-			if not (self.p.model in new_models):
+			if not (self.p.model in nodict_models):
 				self.load_model(self.p.model_dir)
 			else:
 				self.load_classifier()
