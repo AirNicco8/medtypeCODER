@@ -56,15 +56,9 @@ class MedType(object):
 		else: # HERE
 			data = load_pickle('{}/{}.pkl'.format(self.p.data_dir, self.p.data))
 
-			id_list = [] # (!!!) added this part to use only the json considered by linker dump
-			for line in open('../datasets/{}.json'.format('medmentions')):
-				doc = json.loads(line.strip())		
-				if doc['split'] == 'test': id_list.append(doc['_id'])
-
 			for doc in data:
-				if doc['_id'] in id_list:
-					doc['label'] = list(set([self.type2id[type_remap[x]] for x in doc['label']]))
-					self.data[doc.get('split', 'train')].append(doc)
+				doc['label'] = list(set([self.type2id[type_remap[x]] for x in doc['label']]))
+				self.data[doc.get('split', 'train')].append(doc)
 
 		self.logger.info('\nDataset size -- Train: {}, Valid: {}, Test:{}'.format(len(self.data['train']), len(self.data['valid']), len(self.data['test'])))
 
@@ -83,11 +77,18 @@ class MedType(object):
 					collate_fn      = dataset.collate_fn
 				)
 
-		self.data_iter = {
-			'train'	: 0, #(!!!) get_data_loader('train'),
-			'valid'	: 0, # (!!!) get_data_loader('valid', shuffle=False),
-			'test'	: get_data_loader('test',  shuffle=False),
-		}
+		if self.p.dump_only: # per evaluation carico solo test (!!!)
+			self.data_iter = {
+				'train'	: 0,
+				'valid'	: 0,
+				'test'	: get_data_loader('test',  shuffle=False),
+			}
+		else:
+			self.data_iter = {
+				'train'	: get_data_loader('train'),
+				'valid'	: get_data_loader('valid', shuffle=False),
+				'test'	: get_data_loader('test',  shuffle=False),
+			}
 
 	def add_model(self):
 		"""
@@ -105,6 +106,9 @@ class MedType(object):
 		elif 	self.p.model == 'bert_coder': 	model = BertCoder(self.p, len(self.tokenizer), self.num_class)
 		elif 	self.p.model == 'og_coder': 	model = OgCoder(self.p, len(self.tokenizer), self.num_class)
 		else:	raise NotImplementedError
+
+		for param in model.bert.parameters(): #(!!!) freeze all layers except class
+			param.requires_grad = False
 
 		model = model.to(self.device)
 
@@ -238,10 +242,19 @@ class MedType(object):
 		Returns
 		-------
 		"""
-		class_weights = torch.load('{}/{}'.format('models/classifier/', 'classifier_weights'))
+		state = self.model.state_dict()
+
+		class_weights = torch.load('{}/{}'.format('models/classifier', self.p.name))
+
+		new_state_dict  = OrderedDict()
+
+		for k, v in state.items():
+			new_state_dict[k] = v
 
 		for k, v in class_weights.items(): # (!!!) classifier weights coming from general model pretrained
-			self.model.state_dict()[k] = v
+			new_state_dict[k] = v
+
+		self.model.load_state_dict(new_state_dict)
 
 	def save_model(self, save_path):
 		"""
@@ -314,6 +327,7 @@ class MedType(object):
 
 		with torch.no_grad():
 			for batches in self.data_iter[split]:
+				if not self.p.dump_only: batches = batches[:5] # (!!!) added 
 				for k, batch in enumerate(batches):
 					eval_loss, logits = self.execute(batch)
 
@@ -342,7 +356,7 @@ class MedType(object):
 			self.best_val		= valid_acc
 			_, self.best_test	= self.predict(epoch, 'test')
 			self.best_epoch		= epoch
-			self.save_model(self.p.model_dir)
+			self.save_model(self.p.save_dir)
 			return True
 	
 		return False
@@ -480,6 +494,7 @@ if __name__== "__main__":
 	parser.add_argument('--config_dir',   	default='../config',        				help='Config directory')
 	parser.add_argument('--data_dir',   	default='./data',        				help='Config directory')
 	parser.add_argument('--model_dir',   	default='./models',        				help='Model directory')
+	parser.add_argument('--save_dir',   	default='./models',        				help='Save directory')
 	parser.add_argument('--log_dir',   	default='./logs',   	   				help='Log directory')
 
 	args = parser.parse_args()

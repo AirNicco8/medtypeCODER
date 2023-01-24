@@ -1,5 +1,5 @@
 python3 medtype.py --data medmentions \
-                  --gpu -1 \
+                  --gpu 0 \
                   --model bert_coder \
 				  --name 160k_sub \
 		  --num_workers 0 \
