@@ -251,7 +251,7 @@ class MedType(object):
 		for k, v in state.items():
 			new_state_dict[k] = v
 
-		for k, v in class_weights.items(): # (!!!) classifier weights coming from general model pretrained
+		for k, v in class_weights.items():
 			new_state_dict[k] = v
 
 		self.model.load_state_dict(new_state_dict)
