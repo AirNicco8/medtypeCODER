@@ -21,7 +21,7 @@ class BertPlain(nn.Module):
 		super().__init__()
 		
 		self.p 		= params
-		self.bert 	= BertModel.from_pretrained(self.p.bert_model, config=self.p.model_dir+'config.json') # (!!!) added config
+		self.bert 	= BertModel.from_pretrained(self.p.bert_model)
 		self.bert.resize_token_embeddings(num_tokens)
 		self.dropout	= nn.Dropout(self.p.drop)
 		self.classifier	= nn.Linear(self.bert.config.hidden_size, num_labels)

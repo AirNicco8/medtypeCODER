@@ -1,6 +1,8 @@
 from helper import *
 from models import BertPlain, BertCombined, BertCoder, OgCoder
 from dataloader import MedTypeDataset
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 import numpy as np
 from torch.utils.data import DataLoader, Subset
@@ -68,7 +70,8 @@ class MedType(object):
 		self.logger.info('\nDataset size -- Train: {}, Valid: {}, Test:{}'.format(len(self.data['train']), len(self.data['valid']), len(self.data['test'])))
 
 		if self.p.model ==  'bert_coder': self.tokenizer 	=  BertTokenizer.from_pretrained(self.p.model_dir+'tokenizer.json') # (!!!) BertTokenizer.from_pretrained(self.p.bert_model) 
-		if self.p.model ==  'og_coder': self.tokenizer 	=  BertTokenizer.from_pretrained("GanjinZero/coder_all") 
+		elif self.p.model ==  'og_coder': self.tokenizer 	=  BertTokenizer.from_pretrained("GanjinZero/coder_all") 
+		else:  self.tokenizer = BertTokenizer.from_pretrained(self.p.bert_model)
 
 		self.tokenizer.add_tokens(['[MENTION]', '[/MENTION]'])
 
@@ -190,8 +193,11 @@ class MedType(object):
 		Returns
 		-------
 		"""
-		state = torch.load('{}/{}'.format(load_path, self.p.name))
-		class_weights = torch.load('{}/{}'.format('models/classifier/', 'classifier_weights'))
+		if len(self.gpu_list) > 1:
+			state = torch.load('{}/{}'.format(load_path, self.p.name))
+		else:
+			state = torch.load('{}/{}'.format(load_path, self.p.name), map_location=torch.device('cpu'))
+			
 		self.best_val		= 0.0
 		self.best_test		= 0.0
 		self.best_epoch		= 0
@@ -203,6 +209,18 @@ class MedType(object):
 			for k, v in state_dict.items():
 				if 'module' not in k: 	k = 'module.' + k
 				else: 			k = k.replace('features.module.', 'module.features.')
+				new_state_dict[k] = v
+
+			self.model.load_state_dict(new_state_dict)
+		
+		if self.p.model == 'bert_plain':
+			state_dict 	= state['state_dict']
+			new_state_dict  = OrderedDict()
+
+			for k, v in state_dict.items():
+				if 'module' in k:
+					k = k.replace('module.', '')
+
 				new_state_dict[k] = v
 
 			self.model.load_state_dict(new_state_dict)
@@ -313,7 +331,7 @@ class MedType(object):
 
 		with torch.no_grad():
 			for batches in self.data_iter[split]:
-				for k, batch in enumerate(batches[:10]): # (!!!) only 10 batches evaluated
+				for k, batch in tqdm(enumerate(batches)):
 					eval_loss, logits = self.execute(batch)
 
 					if (k+1) % self.p.log_freq == 0:
