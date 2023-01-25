@@ -113,7 +113,9 @@ if __name__ == '__main__':
 			others    = mergeList(mdl_preds['others'])
 			pred_prb  = sigmoid(logits) > args.thresh
 
+			ids=[]
 			for i, ele in enumerate(others):
+				if len(ele['_id'])>8: ele['_id'] = ele['_id'][:7]
 				all_pred[ele['_id']][(ele['start'], ele['end'])] = pred_prb[i]
 			
 			model_res = ddict(list)

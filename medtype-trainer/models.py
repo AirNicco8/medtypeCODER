@@ -64,14 +64,13 @@ class BertCoder(nn.Module): # (!!!) new class for CODER
 		super().__init__()
 		
 		self.p 		= params
-		self.bert 	= SentenceTransformer(self.p.model_dir)[0]
-		#self.bert.resize_token_embeddings(num_tokens)
+		self.bert 	= BertModel.from_pretrained(self.p.model_dir+'bert/.')
+		self.bert.resize_token_embeddings(num_tokens)
 		self.dropout	= nn.Dropout(self.p.drop)
 		self.classifier	= nn.Linear(768, num_labels)
 	
 	def forward(self, input_ids, attention_mask, mention_pos_idx, labels=None):
-		indict={'input_ids': input_ids, 'attention_mask': attention_mask}
-		outputs = self.bert(indict)
+		outputs = self.bert(input_ids, attention_mask)
 
 		tok_embed	= outputs[0]
 		bsz, mtok, dim  = tok_embed.shape
@@ -110,9 +109,7 @@ class OgCoder(nn.Module): # (!!!) new class for CODER
 		self.classifier	= nn.Linear(768, num_labels)
 	
 	def forward(self, input_ids, attention_mask, mention_pos_idx, labels=None):
-		indict={'input_ids': input_ids, 'attention_mask': attention_mask}
-
-		outputs = self.bert(input_ids, attention_mask) #self.bert(indict)
+		outputs = self.bert(input_ids, attention_mask)
 
 		tok_embed	= outputs[0]
 		bsz, mtok, dim  = tok_embed.shape
