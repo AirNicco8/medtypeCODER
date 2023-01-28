@@ -2,6 +2,9 @@ from helper import *
 from joblib import Parallel, delayed
 import requests, re
 
+import warnings
+warnings.filterwarnings("ignore") 
+
 
 ######################### Dump Ground Truth in required format for evaluation
 
